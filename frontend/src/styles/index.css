@@ -1,0 +1,225 @@
+/* ==========================================================================
+   index.css — Global styles for FlashAI
+   Tailwind base + custom animations + card flip + scrollbar
+   ========================================================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+   Base resets
+   -------------------------------------------------------------------------- */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing:  antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-gray-950 text-white;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+                 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Remove default button styles */
+  button {
+    @apply cursor-pointer;
+  }
+
+  /* Remove tap highlight on mobile */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3D Card flip
+   -------------------------------------------------------------------------- */
+@layer utilities {
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+
+  .backface-hidden {
+    backface-visibility:         hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  .perspective {
+    perspective: 1200px;
+  }
+
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Custom animations
+   -------------------------------------------------------------------------- */
+@layer utilities {
+
+  /* Shimmer — used on progress bar */
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 1.8s linear infinite;
+    background-size: 200% 100%;
+  }
+
+  /* Fade in up — page entry */
+  @keyframes fadeInUp {
+    from {
+      opacity:   0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity:   1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.4s ease-out both;
+  }
+
+  /* Fade in — simple opacity */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out both;
+  }
+
+  /* Scale in — modal / card pop */
+  @keyframes scaleIn {
+    from {
+      opacity:   0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity:   1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.25s ease-out both;
+  }
+
+  /* Pulse ring — notification active indicator */
+  @keyframes pulseRing {
+    0%   { transform: scale(0.8); opacity: 1;   }
+    100% { transform: scale(2);   opacity: 0;   }
+  }
+
+  .animate-pulse-ring {
+    animation: pulseRing 1.4s ease-out infinite;
+  }
+
+  /* Bounce subtle — used on CTAs */
+  @keyframes bounceSoft {
+    0%, 100% { transform: translateY(0);    }
+    50%       { transform: translateY(-4px); }
+  }
+
+  .animate-bounce-soft {
+    animation: bounceSoft 2s ease-in-out infinite;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Custom scrollbar
+   -------------------------------------------------------------------------- */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #111827; /* gray-900 */
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background:    #374151; /* gray-700 */
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #6d28d9; /* violet-700 */
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Range input — cross-browser styling
+   -------------------------------------------------------------------------- */
+@layer base {
+  input[type="range"] {
+    @apply w-full h-2 rounded-full appearance-none bg-gray-700 outline-none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    @apply appearance-none w-5 h-5 rounded-full bg-violet-500 cursor-pointer;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.25);
+    transition: box-shadow 0.15s ease;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 5px rgba(124, 58, 237, 0.35);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    @apply w-5 h-5 rounded-full bg-violet-500 border-none cursor-pointer;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Flashcard deck — dot navigator active state
+   -------------------------------------------------------------------------- */
+@layer components {
+  .deck-dot {
+    @apply w-2 h-2 rounded-full transition-all duration-300 bg-gray-700;
+  }
+
+  .deck-dot.active {
+    @apply bg-violet-400 w-4;
+  }
+
+  .deck-dot.reviewed {
+    @apply bg-violet-700;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Utility — glass card
+   -------------------------------------------------------------------------- */
+@layer components {
+  .glass-card {
+    @apply bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-2xl;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Utility — gradient text
+   -------------------------------------------------------------------------- */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #a78bfa, #7c3aed);
+  }
+}
