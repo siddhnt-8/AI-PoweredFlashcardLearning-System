@@ -2,7 +2,8 @@
 models.py — SQLAlchemy ORM models for the Flashcard application.
 
 Tables:
-  - Deck        : a collection of flashcards generated from one PDF
+  - User        : registered user account
+  - Deck        : a collection of flashcards generated from one PDF (linked to User)
   - Flashcard   : individual card belonging to a Deck
   - ReviewLog   : SM-2 spaced repetition state per Flashcard
 """
@@ -49,21 +50,54 @@ def _now() -> datetime:
 
 
 # ---------------------------------------------------------------------------
+# User
+# ---------------------------------------------------------------------------
+class User(Base):
+    """
+    Registered user account.
+
+    Passwords are stored as bcrypt hashes — never plain text.
+    Each user owns their own Decks and Flashcards.
+    """
+    __tablename__ = "users"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    email      = Column(String(255), unique=True, nullable=False, index=True)
+    password   = Column(String(255), nullable=False)   # bcrypt hash
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    # One User → many Decks; deleting a user cascades to their decks
+    decks = relationship(
+        "Deck",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<User id={self.id} email={self.email!r}>"
+
+
+# ---------------------------------------------------------------------------
 # Deck
 # ---------------------------------------------------------------------------
 class Deck(Base):
     """
     Represents one PDF upload session.
     A Deck groups all Flashcards generated from a single document.
+    Linked to the User who created it via user_id.
     """
     __tablename__ = "decks"
 
     id         = Column(Integer, primary_key=True, index=True)
-    title      = Column(String(255), nullable=False)          # PDF filename
-    mode       = Column(Enum(GenerationMode), nullable=False) # notes | questions
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title      = Column(String(255), nullable=False)           # PDF filename
+    mode       = Column(Enum(GenerationMode), nullable=False)  # notes | questions
     created_at = Column(DateTime(timezone=True), default=_now)
 
-    # One Deck → many Flashcards; deleting the deck cascades to its cards
+    # Relationships
+    user = relationship("User", back_populates="decks")
+
     flashcards = relationship(
         "Flashcard",
         back_populates="deck",
@@ -72,7 +106,7 @@ class Deck(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Deck id={self.id} title={self.title!r} mode={self.mode}>"
+        return f"<Deck id={self.id} title={self.title!r} mode={self.mode} user_id={self.user_id}>"
 
 
 # ---------------------------------------------------------------------------

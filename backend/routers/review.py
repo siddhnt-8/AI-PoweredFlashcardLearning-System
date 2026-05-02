@@ -1,10 +1,13 @@
 """
 routers/review.py — Spaced repetition review endpoints.
 
+All endpoints are protected — requires valid JWT Bearer token.
+Users can only review their own flashcards.
+
 Endpoints:
-  POST /review/        — Submit a quality rating for a card (SM-2 algorithm)
-  GET  /review/due     — Get all cards due for review today
-  GET  /review/stats   — Get overall review statistics
+  POST /review/      — Submit a quality rating for a card (SM-2 algorithm)
+  GET  /review/due   — Get all cards due for review today
+  GET  /review/stats — Get overall review statistics
 """
 
 from datetime import datetime, timezone
@@ -13,8 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Flashcard, ReviewLog
+from models import Deck, Flashcard, ReviewLog, User
 from schemas import APIResponse, DueCardsOut, FlashcardOut, ReviewQuality, ReviewResult
+from services.auth_service import get_current_user
 from services.scheduler import apply_sm2
 
 router = APIRouter()
@@ -23,19 +27,20 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _get_review_log_or_404(flashcard_id: int, db: Session) -> ReviewLog:
-    """Fetch a ReviewLog by flashcard_id or raise 404."""
-    log = (
-        db.query(ReviewLog)
-        .filter(ReviewLog.flashcard_id == flashcard_id)
+def _get_card_for_user(card_id: int, user_id: int, db: Session) -> Flashcard:
+    """Fetch a Flashcard that belongs to the current user or raise 404."""
+    card = (
+        db.query(Flashcard)
+        .join(Deck, Deck.id == Flashcard.deck_id)
+        .filter(Flashcard.id == card_id, Deck.user_id == user_id)
         .first()
     )
-    if not log:
+    if not card:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No review log found for flashcard id={flashcard_id}.",
+            detail=f"Flashcard id={card_id} not found.",
         )
-    return log
+    return card
 
 
 # ---------------------------------------------------------------------------
@@ -45,24 +50,16 @@ def _get_review_log_or_404(flashcard_id: int, db: Session) -> ReviewLog:
     "/",
     response_model=APIResponse[ReviewResult],
     summary="Submit a card review",
-    description=(
-        "Accept a SM-2 quality score (0–5) for a flashcard and update its "
-        "review schedule. Returns the next due date and updated ease factor."
-    ),
 )
 def submit_review(
-    payload: ReviewQuality,
-    db:      Session = Depends(get_db),
+    payload:      ReviewQuality,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
-    # Verify the flashcard exists
-    card = db.query(Flashcard).filter(Flashcard.id == payload.flashcard_id).first()
-    if not card:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Flashcard id={payload.flashcard_id} not found.",
-        )
+    # Verify card belongs to current user
+    card = _get_card_for_user(payload.flashcard_id, current_user.id, db)
 
-    # Fetch or create the review log
+    # Fetch or create review log
     log = db.query(ReviewLog).filter(
         ReviewLog.flashcard_id == payload.flashcard_id
     ).first()
@@ -78,7 +75,7 @@ def submit_review(
         db.add(log)
         db.flush()
 
-    # Apply SM-2 algorithm
+    # Apply SM-2
     updated = apply_sm2(
         ease_factor=log.ease_factor,
         interval=log.interval,
@@ -86,7 +83,6 @@ def submit_review(
         quality=payload.quality,
     )
 
-    # Persist updated state
     log.ease_factor   = updated["ease_factor"]
     log.interval      = updated["interval"]
     log.repetitions   = updated["repetitions"]
@@ -102,10 +98,7 @@ def submit_review(
             next_interval=log.interval,
             ease_factor=log.ease_factor,
             due_date=log.due_date,
-            message=(
-                f"Card scheduled for review in {log.interval} day(s). "
-                f"Ease factor: {log.ease_factor:.2f}."
-            ),
+            message=f"Card scheduled in {log.interval} day(s). Ease: {log.ease_factor:.2f}.",
         ),
         message="Review submitted successfully.",
     )
@@ -115,29 +108,27 @@ def submit_review(
     "/due",
     response_model=APIResponse[DueCardsOut],
     summary="Get all cards due for review today",
-    description="Returns every flashcard whose next review date is today or in the past.",
 )
 def get_due_cards(
-    db: Session = Depends(get_db),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
     now = datetime.now(timezone.utc)
 
-    due_logs = (
-        db.query(ReviewLog)
-        .filter(ReviewLog.due_date <= now)
+    # Only fetch cards belonging to the current user
+    due_cards = (
+        db.query(Flashcard)
+        .join(Deck, Deck.id == Flashcard.deck_id)
+        .join(ReviewLog, ReviewLog.flashcard_id == Flashcard.id)
+        .filter(
+            Deck.user_id == current_user.id,
+            ReviewLog.due_date <= now,
+        )
         .order_by(ReviewLog.due_date.asc())
         .all()
     )
 
-    flashcard_ids = [log.flashcard_id for log in due_logs]
-
-    flashcards = (
-        db.query(Flashcard)
-        .filter(Flashcard.id.in_(flashcard_ids))
-        .all()
-    ) if flashcard_ids else []
-
-    cards_out = [FlashcardOut.model_validate(c) for c in flashcards]
+    cards_out = [FlashcardOut.model_validate(c) for c in due_cards]
 
     return APIResponse(
         data=DueCardsOut(
@@ -151,41 +142,37 @@ def get_due_cards(
 @router.get(
     "/stats",
     response_model=APIResponse[dict],
-    summary="Get overall review statistics",
-    description="Returns aggregate stats: total cards, reviewed today, average ease factor.",
+    summary="Get review statistics for current user",
 )
 def get_stats(
-    db: Session = Depends(get_db),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
-    now       = datetime.now(timezone.utc)
+    now         = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    total_cards = db.query(ReviewLog).count()
-
-    reviewed_today = (
+    # All review logs for this user's cards
+    user_logs = (
         db.query(ReviewLog)
-        .filter(ReviewLog.last_reviewed >= today_start)
-        .count()
+        .join(Flashcard, Flashcard.id == ReviewLog.flashcard_id)
+        .join(Deck, Deck.id == Flashcard.deck_id)
+        .filter(Deck.user_id == current_user.id)
+        .all()
     )
 
-    due_count = (
-        db.query(ReviewLog)
-        .filter(ReviewLog.due_date <= now)
-        .count()
-    )
-
-    # Average ease factor across all logs
-    all_logs     = db.query(ReviewLog).all()
-    avg_ease     = (
-        round(sum(l.ease_factor for l in all_logs) / len(all_logs), 2)
-        if all_logs else 0.0
+    total_cards    = len(user_logs)
+    reviewed_today = sum(1 for l in user_logs if l.last_reviewed and l.last_reviewed >= today_start)
+    due_now        = sum(1 for l in user_logs if l.due_date <= now)
+    avg_ease       = (
+        round(sum(l.ease_factor for l in user_logs) / total_cards, 2)
+        if total_cards else 0.0
     )
 
     return APIResponse(
         data={
             "total_cards":     total_cards,
             "reviewed_today":  reviewed_today,
-            "due_now":         due_count,
+            "due_now":         due_now,
             "avg_ease_factor": avg_ease,
         },
         message="Review statistics retrieved successfully.",

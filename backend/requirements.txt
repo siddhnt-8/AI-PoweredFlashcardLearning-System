@@ -1,49 +1,55 @@
 # ===========================================================================
-# AI Flashcard API — Python dependencies
+# AI Flashcard API — Python dependencies (Python 3.13 compatible)
 # Install with: pip install -r requirements.txt
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
 # Web framework
 # ---------------------------------------------------------------------------
-fastapi==0.115.0
-uvicorn[standard]==0.30.6          # ASGI server with auto-reload support
+fastapi
+uvicorn[standard]
 
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-sqlalchemy==2.0.35                 # ORM + Core
-alembic==1.13.2                    # DB migrations (optional but recommended)
+sqlalchemy
+alembic
 
 # ---------------------------------------------------------------------------
 # Settings / environment
 # ---------------------------------------------------------------------------
-pydantic==2.9.2
-pydantic-settings==2.5.2          # BaseSettings with .env file support
+pydantic[email]
+pydantic-settings
 
 # ---------------------------------------------------------------------------
 # PDF text extraction
 # ---------------------------------------------------------------------------
-pymupdf==1.25.5                   # fitz — fast, accurate PDF parsing
+pymupdf
 
 # ---------------------------------------------------------------------------
 # LLM — LangChain + OpenRouter (MiMo-v2-Flash)
 # ---------------------------------------------------------------------------
-langchain==0.3.1
-langchain-openai==0.2.1           # ChatOpenAI with custom base_url support
-openai==1.51.0                    # Required by langchain-openai under the hood
+langchain
+langchain-openai
+openai
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+python-jose[cryptography]       # JWT token creation and decoding
+passlib[bcrypt]                 # Password hashing with bcrypt
 
 # ---------------------------------------------------------------------------
 # File upload / multipart form handling
 # ---------------------------------------------------------------------------
-python-multipart==0.0.12          # Required by FastAPI for UploadFile
+python-multipart
 
 # ---------------------------------------------------------------------------
-# HTTP client (used internally by openai SDK)
+# HTTP client
 # ---------------------------------------------------------------------------
-httpx==0.27.2
+httpx
 
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
-python-dotenv==1.0.1              # Load .env in scripts / local dev
+python-dotenv
