@@ -1,18 +1,20 @@
 /**
- * DeckListPage.jsx — Lists all generated flashcard decks.
- * Users can view, study, or delete any deck from here.
+ * pages/DeckListPage.jsx — Lists all decks with per-deck notification toggle.
+ *
+ * Each deck card has a 🔔 button that adds/removes it from the
+ * global notification pool independently.
+ *
+ * Props:
+ *   notifHook {object} — useNotifications hook instance from App.jsx
  */
 
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { listDecks, deleteDeck } from "../api/client";
 
-// ── Helpers ────────────────────────────────────────────────────────────────
 const formatDate = (iso) =>
   new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day:   "numeric",
-    year:  "numeric",
+    month: "short", day: "numeric", year: "numeric",
   });
 
 const modeColors = {
@@ -20,23 +22,18 @@ const modeColors = {
   notes:     "bg-blue-950/50   text-blue-400   border-blue-800",
 };
 
-const modeIcons = {
-  questions: "❓",
-  notes:     "📝",
-};
+const modeIcons = { questions: "❓", notes: "📝" };
 
-export default function DeckListPage() {
+export default function DeckListPage({ notifHook }) {
   const navigate = useNavigate();
+  const { addDeck, removeDeck, isDeckActive, active } = notifHook;
 
-  const [decks,   setDecks]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
-  const [deleting, setDeleting] = useState(null); // deck id being deleted
+  const [decks,    setDecks]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+  const [deleting, setDeleting] = useState(null);
 
-  // ── Fetch decks ────────────────────────────────────────────────────────
-  useEffect(() => {
-    fetchDecks();
-  }, []);
+  useEffect(() => { fetchDecks(); }, []);
 
   const fetchDecks = async () => {
     setLoading(true);
@@ -51,23 +48,40 @@ export default function DeckListPage() {
     }
   };
 
-  // ── Delete deck ────────────────────────────────────────────────────────
-  const handleDelete = async (e, deckId) => {
-    e.stopPropagation(); // don't navigate to deck
+  const handleDelete = async (e, deck) => {
+    e.stopPropagation();
     if (!confirm("Delete this deck and all its flashcards?")) return;
-
-    setDeleting(deckId);
+    setDeleting(deck.id);
     try {
-      await deleteDeck(deckId);
-      setDecks((prev) => prev.filter((d) => d.id !== deckId));
+      await deleteDeck(deck.id);
+      removeDeck(deck.id); // also remove from notification pool
+      setDecks((prev) => prev.filter((d) => d.id !== deck.id));
     } catch {
-      alert("Failed to delete deck. Please try again.");
+      alert("Failed to delete deck.");
     } finally {
       setDeleting(null);
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ── Toggle deck in notification pool ────────────────────────────────
+  const handleNotifToggle = async (e, deck) => {
+    e.stopPropagation();
+
+    if (isDeckActive(deck.id)) {
+      removeDeck(deck.id);
+    } else {
+      // Fetch full deck cards if not available
+      try {
+        const { getDeck } = await import("../api/client");
+        const res         = await getDeck(deck.id);
+        const cards       = res.data?.flashcards || [];
+        addDeck(deck.id, deck.title, cards);
+      } catch {
+        alert("Failed to load deck cards for notifications.");
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-950 text-white px-4 py-10">
       <div className="max-w-3xl mx-auto">
@@ -84,23 +98,37 @@ export default function DeckListPage() {
           </div>
           <button
             onClick={() => navigate("/")}
-            className="bg-violet-600 hover:bg-violet-500 text-white font-semibold px-5 py-2.5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+            className="bg-violet-600 hover:bg-violet-500 text-white font-semibold
+              px-5 py-2.5 rounded-xl transition-all hover:scale-[1.02]"
           >
             + New Deck
           </button>
         </div>
 
+        {/* Notification hint */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3
+          mb-6 flex items-center gap-3">
+          <span className="text-xl">💡</span>
+          <p className="text-gray-400 text-sm">
+            Click <span className="text-violet-400 font-semibold">🔔</span> on
+            any deck to add it to your notification pool. Multiple decks can
+            run simultaneously.
+          </p>
+        </div>
+
         {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent
+              rounded-full animate-spin" />
             <p className="text-gray-500">Loading decks…</p>
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="bg-red-950/40 border border-red-800 text-red-400 rounded-xl px-5 py-4 mb-6 flex items-center justify-between">
+          <div className="bg-red-950/40 border border-red-800 text-red-400
+            rounded-xl px-5 py-4 mb-6 flex items-center justify-between">
             <span>⚠️ {error}</span>
             <button onClick={fetchDecks} className="text-sm underline ml-4">
               Retry
@@ -114,11 +142,12 @@ export default function DeckListPage() {
             <div className="text-6xl">📭</div>
             <h2 className="text-xl font-bold text-gray-300">No decks yet</h2>
             <p className="text-gray-500 max-w-xs">
-              Upload a PDF to generate your first set of AI-powered flashcards.
+              Upload a PDF to generate your first AI-powered flashcard deck.
             </p>
             <button
               onClick={() => navigate("/")}
-              className="mt-2 bg-violet-600 hover:bg-violet-500 text-white font-semibold px-6 py-2.5 rounded-xl transition-all"
+              className="mt-2 bg-violet-600 hover:bg-violet-500 text-white
+                font-semibold px-6 py-2.5 rounded-xl transition-all"
             >
               Upload PDF
             </button>
@@ -128,53 +157,94 @@ export default function DeckListPage() {
         {/* Deck list */}
         {!loading && decks.length > 0 && (
           <div className="space-y-3">
-            {decks.map((deck) => (
-              <div
-                key={deck.id}
-                onClick={() => navigate(`/deck/${deck.id}`)}
-                className="group relative bg-gray-900 border border-gray-800 hover:border-violet-700 rounded-2xl p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-violet-900/20 hover:-translate-y-0.5"
-              >
-                <div className="flex items-start justify-between gap-4">
+            {decks.map((deck) => {
+              const isNotifOn = isDeckActive(deck.id);
+              return (
+                <div
+                  key={deck.id}
+                  onClick={() => navigate(`/deck/${deck.id}`)}
+                  className="group relative bg-gray-900 border border-gray-800
+                    hover:border-violet-700 rounded-2xl p-5 cursor-pointer
+                    transition-all duration-200 hover:shadow-lg
+                    hover:shadow-violet-900/20 hover:-translate-y-0.5"
+                >
+                  <div className="flex items-start justify-between gap-4">
 
-                  {/* Left — info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      {/* Mode badge */}
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${modeColors[deck.mode]}`}>
-                        {modeIcons[deck.mode]} {deck.mode}
-                      </span>
+                    {/* Left info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className={`text-xs font-semibold px-2 py-0.5
+                          rounded-full border ${modeColors[deck.mode]}`}>
+                          {modeIcons[deck.mode]} {deck.mode}
+                        </span>
+                        {/* Notification active badge */}
+                        {isNotifOn && (
+                          <span className="text-xs font-semibold px-2 py-0.5
+                            rounded-full border border-green-800
+                            bg-green-950/50 text-green-400">
+                            🔔 In Pool
+                          </span>
+                        )}
+                      </div>
+
+                      <h2 className="text-white font-bold text-lg truncate
+                        group-hover:text-violet-300 transition-colors">
+                        {deck.title}
+                      </h2>
+
+                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                        <span>🃏 {deck.card_count} cards</span>
+                        <span>📅 {formatDate(deck.created_at)}</span>
+                      </div>
                     </div>
 
-                    <h2 className="text-white font-bold text-lg truncate group-hover:text-violet-300 transition-colors">
-                      {deck.title}
-                    </h2>
+                    {/* Right actions */}
+                    <div className="flex items-center gap-2 shrink-0">
 
-                    <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                      <span>🃏 {deck.card_count} cards</span>
-                      <span>📅 {formatDate(deck.created_at)}</span>
+                      {/* Notification toggle */}
+                      <button
+                        onClick={(e) => handleNotifToggle(e, deck)}
+                        title={isNotifOn
+                          ? "Remove from notification pool"
+                          : "Add to notification pool"
+                        }
+                        className={`text-sm px-3 py-2 rounded-lg border transition-all
+                          ${isNotifOn
+                            ? "border-green-700 bg-green-950/30 text-green-400"
+                            : "border-gray-700 text-gray-500 hover:border-violet-700 hover:text-violet-400"
+                          }`}
+                      >
+                        {isNotifOn ? "🔔" : "🔕"}
+                      </button>
+
+                      {/* Study button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/deck/${deck.id}`);
+                        }}
+                        className="text-sm px-4 py-2 bg-violet-600 hover:bg-violet-500
+                          text-white rounded-lg font-medium transition-all"
+                      >
+                        Study →
+                      </button>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => handleDelete(e, deck)}
+                        disabled={deleting === deck.id}
+                        className="text-sm px-3 py-2 border border-gray-700
+                          hover:border-red-700 hover:text-red-400 text-gray-500
+                          rounded-lg transition-all"
+                      >
+                        {deleting === deck.id ? "…" : "🗑"}
+                      </button>
+
                     </div>
                   </div>
-
-                  {/* Right — actions */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/deck/${deck.id}`); }}
-                      className="text-sm px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-medium transition-all"
-                    >
-                      Study →
-                    </button>
-                    <button
-                      onClick={(e) => handleDelete(e, deck.id)}
-                      disabled={deleting === deck.id}
-                      className="text-sm px-3 py-2 border border-gray-700 hover:border-red-700 hover:text-red-400 text-gray-500 rounded-lg transition-all"
-                    >
-                      {deleting === deck.id ? "…" : "🗑"}
-                    </button>
-                  </div>
-
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

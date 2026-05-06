@@ -3,7 +3,7 @@ schemas.py — Pydantic v2 request/response schemas for the Flashcard API.
 
 Sections:
   - Generic API response wrapper
-  - Auth schemas        (NEW)
+  - Auth schemas
   - Flashcard schemas
   - Deck schemas
   - ReviewLog schemas
@@ -14,7 +14,7 @@ Sections:
 from datetime import datetime
 from typing import Any, Generic, List, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from models import CardType, GenerationMode
 
@@ -30,8 +30,8 @@ class APIResponse(BaseModel, Generic[T]):
     Standard envelope returned by every endpoint.
     { "success": true, "message": "...", "data": { ... } }
     """
-    success: bool       = True
-    message: str        = "OK"
+    success: bool        = True
+    message: str         = "OK"
     data:    Optional[T] = None
 
 
@@ -47,14 +47,14 @@ class ErrorResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class SignupRequest(BaseModel):
     """Payload for POST /auth/signup."""
-    email:    EmailStr = Field(..., description="Valid email address")
-    password: str      = Field(..., min_length=6, description="Password (min 6 characters)")
+    email:    str = Field(..., description="Valid email address")
+    password: str = Field(..., min_length=6, description="Password (min 6 characters)")
 
 
 class LoginRequest(BaseModel):
     """Payload for POST /auth/login."""
-    email:    EmailStr = Field(..., description="Registered email address")
-    password: str      = Field(..., min_length=1, description="Account password")
+    email:    str = Field(..., description="Registered email address")
+    password: str = Field(..., min_length=1, description="Account password")
 
 
 class UserOut(BaseModel):
@@ -173,10 +173,10 @@ class UploadResponse(BaseModel):
 class ReviewQuality(BaseModel):
     """
     SM-2 quality rating submitted by the user after reviewing a card.
-    quality: 0 (blank) → 5 (perfect)
+    quality: 0 (blank) to 5 (perfect)
     """
     flashcard_id: int = Field(..., description="ID of the card being reviewed")
-    quality:      int = Field(..., ge=0, le=5, description="SM-2 quality score (0–5)")
+    quality:      int = Field(..., ge=0, le=5, description="SM-2 quality score (0-5)")
 
 
 class ReviewResult(BaseModel):

@@ -1,32 +1,38 @@
 /**
- * FlashcardPage.jsx — Flashcard study viewer.
- * Displays a deck of flashcards with flip animation, navigation,
- * spaced repetition rating, and browser notification toggle.
+ * pages/FlashcardPage.jsx — Flashcard study viewer.
+ *
+ * Includes a 🔔 toggle button to add/remove this deck
+ * from the global notification pool independently.
+ *
+ * Props:
+ *   notifHook {object} — shared useNotifications instance from App.jsx
  */
 
 import { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { getDeck, submitReview } from "../api/client";
-import Flashcard from "../components/Flashcard";
+import Flashcard   from "../components/Flashcard";
 import ProgressBar from "../components/ProgressBar";
-import NotificationManager from "../components/NotificationManager";
 
-export default function FlashcardPage() {
-  const { deckId }   = useParams();
-  const { state }    = useLocation();
-  const navigate     = useNavigate();
+export default function FlashcardPage({ notifHook }) {
+  const { deckId }  = useParams();
+  const { state }   = useLocation();
+  const navigate    = useNavigate();
 
-  const [deck,        setDeck]        = useState(state?.deck || null);
-  const [cards,       setCards]       = useState([]);
-  const [current,     setCurrent]     = useState(0);
-  const [flipped,     setFlipped]     = useState(false);
-  const [loading,     setLoading]     = useState(!state?.deck);
-  const [error,       setError]       = useState("");
-  const [reviewed,    setReviewed]    = useState(new Set());
-  const [showNotifs,  setShowNotifs]  = useState(false);
-  const [ratingDone,  setRatingDone]  = useState(false);
+  const { addDeck, removeDeck, isDeckActive } = notifHook;
 
-  // ── Fetch deck if not passed via router state ──────────────────────────
+  const [deck,       setDeck]       = useState(state?.deck || null);
+  const [cards,      setCards]      = useState([]);
+  const [current,    setCurrent]    = useState(0);
+  const [flipped,    setFlipped]    = useState(false);
+  const [loading,    setLoading]    = useState(!state?.deck);
+  const [error,      setError]      = useState("");
+  const [reviewed,   setReviewed]   = useState(new Set());
+  const [ratingDone, setRatingDone] = useState(false);
+
+  const isNotifOn = isDeckActive(deckId);
+
+  // ── Fetch deck ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!deck) {
       setLoading(true);
@@ -42,79 +48,70 @@ export default function FlashcardPage() {
     }
   }, [deckId]);
 
-  // Reset flip state when navigating cards
   useEffect(() => {
     setFlipped(false);
     setRatingDone(false);
   }, [current]);
 
-  // ── Navigation ─────────────────────────────────────────────────────────
-  const goNext = () => {
-    if (current < cards.length - 1) setCurrent((c) => c + 1);
-  };
-  const goPrev = () => {
-    if (current > 0) setCurrent((c) => c - 1);
+  // ── Notification toggle ──────────────────────────────────────────────
+  const handleNotifToggle = () => {
+    if (isNotifOn) {
+      removeDeck(deckId);
+    } else {
+      addDeck(deckId, deck?.title || "Deck", cards);
+    }
   };
 
-  // ── Spaced repetition rating ───────────────────────────────────────────
+  // ── Rating ───────────────────────────────────────────────────────────
   const handleRate = async (quality) => {
     const card = cards[current];
     try {
       await submitReview(card.id, quality);
       setReviewed((prev) => new Set(prev).add(card.id));
       setRatingDone(true);
-      // Auto-advance after rating
       setTimeout(() => {
         if (current < cards.length - 1) setCurrent((c) => c + 1);
       }, 600);
-    } catch {
-      // silently fail rating — don't block the UI
-    }
+    } catch { /* silently fail */ }
   };
 
-  // ── Render states ──────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-violet-400 text-xl animate-pulse">Loading deck…</div>
-      </div>
-    );
-  }
+  // ── Render states ────────────────────────────────────────────────────
+  if (loading) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="text-violet-400 text-xl animate-pulse">Loading deck…</div>
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4">
-        <p className="text-red-400">{error}</p>
-        <button onClick={() => navigate("/")} className="text-violet-400 underline">
-          Go back
-        </button>
-      </div>
-    );
-  }
+  if (error) return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center
+      justify-center gap-4">
+      <p className="text-red-400">{error}</p>
+      <button onClick={() => navigate("/")} className="text-violet-400 underline">
+        Go back
+      </button>
+    </div>
+  );
 
-  if (cards.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400">No cards found in this deck.</p>
-      </div>
-    );
-  }
+  if (cards.length === 0) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <p className="text-gray-400">No cards found in this deck.</p>
+    </div>
+  );
 
-  const card         = cards[current];
-  const isLast       = current === cards.length - 1;
-  const isFirst      = current === 0;
-  const totalReviewed = reviewed.size;
-  const isCompleted  = totalReviewed === cards.length;
+  const card        = cards[current];
+  const isLast      = current === cards.length - 1;
+  const isFirst     = current === 0;
+  const isCompleted = reviewed.size === cards.length;
 
-  // ── Main render ────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
 
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-6 py-4
+        border-b border-gray-800">
         <button
           onClick={() => navigate("/decks")}
-          className="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-2"
+          className="text-gray-400 hover:text-white transition-colors text-sm"
         >
           ← All Decks
         </button>
@@ -126,29 +123,36 @@ export default function FlashcardPage() {
           <p className="text-gray-500 text-xs capitalize">{deck?.mode} mode</p>
         </div>
 
-        {/* Notification toggle */}
+        {/* Per-deck notification toggle */}
         <button
-          onClick={() => setShowNotifs((v) => !v)}
+          onClick={handleNotifToggle}
+          disabled={cards.length === 0}
+          title={isNotifOn
+            ? "Remove this deck from notifications"
+            : "Add this deck to notifications"
+          }
           className={`text-sm px-3 py-1.5 rounded-lg border transition-all
-            ${showNotifs
-              ? "border-violet-500 text-violet-400 bg-violet-950/30"
-              : "border-gray-700 text-gray-400 hover:border-gray-500"
+            ${isNotifOn
+              ? "border-green-700 text-green-400 bg-green-950/30"
+              : "border-gray-700 text-gray-400 hover:border-violet-700 hover:text-violet-400"
             }`}
         >
-          🔔 {showNotifs ? "Notifs On" : "Notifs Off"}
+          {isNotifOn ? "🔔 Notifs On" : "🔕 Notifs Off"}
         </button>
       </div>
 
-      {/* Progress bar */}
+      {/* Progress */}
       <div className="px-6 pt-4">
-        <ProgressBar current={current + 1} total={cards.length} reviewed={totalReviewed} />
+        <ProgressBar
+          current={current + 1}
+          total={cards.length}
+          reviewed={reviewed.size}
+        />
       </div>
-
-      {/* Card counter */}
       <div className="text-center mt-2 text-gray-500 text-sm">
         Card {current + 1} of {cards.length}
-        {totalReviewed > 0 && (
-          <span className="ml-2 text-violet-400">• {totalReviewed} reviewed</span>
+        {reviewed.size > 0 && (
+          <span className="ml-2 text-violet-400">• {reviewed.size} reviewed</span>
         )}
       </div>
 
@@ -162,14 +166,14 @@ export default function FlashcardPage() {
           onFlip={() => setFlipped((f) => !f)}
         />
 
-        {/* Flip hint */}
         {!flipped && (
           <p className="text-gray-600 text-sm mt-4 animate-pulse">
-            Click the card to reveal the {card.type === "question" ? "answer" : "explanation"}
+            Click the card to reveal the{" "}
+            {card.type === "question" ? "answer" : "explanation"}
           </p>
         )}
 
-        {/* SM-2 Rating buttons — shown after flip */}
+        {/* Rating buttons */}
         {flipped && !ratingDone && (
           <div className="mt-6 w-full max-w-md">
             <p className="text-center text-gray-400 text-sm mb-3">
@@ -177,17 +181,18 @@ export default function FlashcardPage() {
             </p>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { q: 1, label: "Again",  emoji: "😞", color: "border-red-800   hover:bg-red-950/40   text-red-400"   },
+                { q: 1, label: "Again",  emoji: "😞", color: "border-red-800    hover:bg-red-950/40    text-red-400"    },
                 { q: 3, label: "Hard",   emoji: "😐", color: "border-yellow-800 hover:bg-yellow-950/40 text-yellow-400" },
-                { q: 4, label: "Good",   emoji: "🙂", color: "border-blue-800  hover:bg-blue-950/40  text-blue-400"  },
-                { q: 5, label: "Easy",   emoji: "😄", color: "border-green-800 hover:bg-green-950/40 text-green-400" },
-                { q: 2, label: "Forgot", emoji: "🤔", color: "border-orange-800 hover:bg-orange-950/40 text-orange-400"},
-                { q: 0, label: "Blank",  emoji: "😵", color: "border-gray-700  hover:bg-gray-800     text-gray-400"  },
+                { q: 4, label: "Good",   emoji: "🙂", color: "border-blue-800   hover:bg-blue-950/40   text-blue-400"   },
+                { q: 5, label: "Easy",   emoji: "😄", color: "border-green-800  hover:bg-green-950/40  text-green-400"  },
+                { q: 2, label: "Forgot", emoji: "🤔", color: "border-orange-800 hover:bg-orange-950/40 text-orange-400" },
+                { q: 0, label: "Blank",  emoji: "😵", color: "border-gray-700   hover:bg-gray-800      text-gray-400"   },
               ].map(({ q, label, emoji, color }) => (
                 <button
                   key={q}
                   onClick={() => handleRate(q)}
-                  className={`border rounded-xl py-2 px-3 text-sm font-medium transition-all ${color}`}
+                  className={`border rounded-xl py-2 px-3 text-sm font-medium
+                    transition-all ${color}`}
                 >
                   {emoji} {label}
                 </button>
@@ -196,7 +201,6 @@ export default function FlashcardPage() {
           </div>
         )}
 
-        {/* Rated confirmation */}
         {ratingDone && (
           <p className="mt-4 text-green-400 text-sm animate-pulse">
             ✅ Rated! Moving to next card…
@@ -205,9 +209,10 @@ export default function FlashcardPage() {
       </div>
 
       {/* Navigation */}
-      <div className="px-6 pb-8 flex items-center justify-between max-w-2xl mx-auto w-full">
+      <div className="px-6 pb-8 flex items-center justify-between
+        max-w-2xl mx-auto w-full">
         <button
-          onClick={goPrev}
+          onClick={() => setCurrent((c) => c - 1)}
           disabled={isFirst}
           className={`px-6 py-3 rounded-xl font-semibold transition-all
             ${isFirst
@@ -221,13 +226,14 @@ export default function FlashcardPage() {
         {isLast && isCompleted ? (
           <button
             onClick={() => navigate("/decks")}
-            className="px-6 py-3 rounded-xl font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-all"
+            className="px-6 py-3 rounded-xl font-semibold bg-violet-600
+              hover:bg-violet-500 text-white transition-all"
           >
             🎉 Finish
           </button>
         ) : (
           <button
-            onClick={goNext}
+            onClick={() => setCurrent((c) => c + 1)}
             disabled={isLast}
             className={`px-6 py-3 rounded-xl font-semibold transition-all
               ${isLast
@@ -240,8 +246,6 @@ export default function FlashcardPage() {
         )}
       </div>
 
-      {/* Notification Manager (invisible, handles scheduling) */}
-      {showNotifs && <NotificationManager cards={cards} />}
     </div>
   );
 }
